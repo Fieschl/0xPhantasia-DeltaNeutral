@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { auth, db, signInAnonymously, onAuthStateChanged } from "./firebase";
+import { db } from "./firebase";
 
 import { Target, Layers, Scale, Percent, Timer, PlusCircle, Trash2, Activity, Wifi, WifiOff, Cloud, AlertTriangle, TrendingDown, Scissors, TrendingUp, Calculator, ArrowUpRight, ArrowDownRight, Clock, MapPin } from 'lucide-react';
 

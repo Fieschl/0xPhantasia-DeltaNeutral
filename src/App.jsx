@@ -1,20 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  signInWithCustomToken, 
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  setDoc, 
-  onSnapshot, 
-  query, 
-  deleteDoc 
-} from 'firebase/firestore';
+import { auth, db } from "./firebase";
+
 import { 
   Target, Zap, RefreshCcw, ShieldCheck, Layers, BarChart3, ArrowRightLeft, 
   Scale, Wallet, Percent, Timer, PlusCircle, Trash2, Activity, Hash, 
@@ -23,22 +9,6 @@ import {
   TrendingUp, MousePointer2, Calculator, ArrowUpRight, ArrowDownRight, Clock, MapPin
 } from 'lucide-react';
 
-// --- Konfigurasi Firebase ---
-// Support Vite envs: set VITE_FIREBASE_CONFIG to a JSON string in Vercel env vars
-let firebaseConfig = {};
-try {
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_CONFIG) {
-    firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG);
-  } else if (typeof __firebase_config !== 'undefined') {
-    firebaseConfig = JSON.parse(__firebase_config);
-  }
-} catch (e) {
-  console.warn('Failed to parse firebase config from env', e);
-}
-
-let app = null;
-let auth = null;
-let db = null;
 if (firebaseConfig && Object.keys(firebaseConfig).length) {
   try {
     app = initializeApp(firebaseConfig);

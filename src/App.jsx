@@ -146,11 +146,24 @@ const App = () => {
   }, [firebaseEnabled, user]);
 
   const removePosition = async (id) => {
-    if (!user) return;
+    if (firebaseEnabled && user && db) {
+      try {
+        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'positions', id));
+        return;
+      } catch (e) {
+        console.error("Gagal menghapus posisi di Firestore:", e);
+      }
+    }
+
+    // Fallback: remove from localStorage so delete works without Firebase
     try {
-      await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'positions', id));
+      const raw = localStorage.getItem('local_positions');
+      const arr = raw ? JSON.parse(raw) : [];
+      const filtered = arr.filter(p => p.id !== id);
+      localStorage.setItem('local_positions', JSON.stringify(filtered));
+      setLivePositions(filtered);
     } catch (e) {
-      console.error("Gagal menghapus posisi:", e);
+      console.error('Gagal menghapus posisi lokal:', e);
     }
   };
 

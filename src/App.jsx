@@ -1,5 +1,19 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
-import { db } from "./firebase";
+import { auth } from "./firebase";
+import {
+  signInAnonymously,
+  signInWithCustomToken,
+  onAuthStateChanged
+} from "firebase/auth";
+
+import {
+  collection,
+  query,
+  onSnapshot,
+  doc,
+  setDoc,
+  deleteDoc
+} from "firebase/firestore";
 
 import { Target, Layers, Scale, Percent, Timer, PlusCircle, Trash2, Activity, Wifi, WifiOff, Cloud, AlertTriangle, TrendingDown, Scissors, TrendingUp, Calculator, ArrowUpRight, ArrowDownRight, Clock, MapPin } from 'lucide-react';
 

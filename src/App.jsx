@@ -182,14 +182,27 @@ const App = () => {
     setIsPriceLoading(true);
     const activeIds = new Set(livePositions.map(p => p.assetType));
     activeIds.add(assetType);
-    if (isCustomMode && customTokenId) activeIds.add(customTokenId.toLowerCase().trim());
-    const idsString = Array.from(activeIds).filter(Boolean).join(',');
+    if (isCustomMode && customTokenId) activeIds.add(customTokenId);
+    // Normalize ids: lowercase, trim, remove empty
+    const idsArray = Array.from(activeIds)
+      .map(id => (id || '').toString().toLowerCase().trim())
+      .filter(Boolean);
+    const uniqueIds = Array.from(new Set(idsArray));
+    const idsString = uniqueIds.join(',');
     if (!idsString) { setIsPriceLoading(false); return; }
     try {
-      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${idsString}&vs_currencies=usd`);
+      const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(idsString)}&vs_currencies=usd`;
+      const res = await fetch(url);
       if (res.ok) {
         const data = await res.json();
-        setMarketPrices(prev => ({ ...prev, ...Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v.usd])) }));
+        // Ensure keys are normalized to lowercase
+        const normalized = Object.fromEntries(
+          Object.entries(data).map(([k, v]) => [k.toLowerCase(), v.usd])
+        );
+        setMarketPrices(prev => ({ ...prev, ...normalized }));
+        // Log any ids we requested but didn't receive
+        const missing = uniqueIds.filter(id => !(id in normalized));
+        if (missing.length) console.warn('CoinGecko missing ids in response:', missing);
         setApiStatus('online');
         setLastUpdate(Date.now());
       } else { setApiStatus('error'); }

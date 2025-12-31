@@ -182,64 +182,26 @@ const App = () => {
     setIsPriceLoading(true);
     const activeIds = new Set(livePositions.map(p => p.assetType));
     activeIds.add(assetType);
-    if (isCustomMode && customTokenId) activeIds.add(customTokenId);
-    // Normalize ids: lowercase, trim, remove empty
-    const idsArray = Array.from(activeIds)
-      .map(id => (id || '').toString().toLowerCase().trim())
-      .filter(Boolean);
-    const uniqueIds = Array.from(new Set(idsArray));
-    const idsString = uniqueIds.join(',');
+    if (isCustomMode && customTokenId) activeIds.add(customTokenId.toLowerCase().trim());
+    const idsString = Array.from(activeIds).filter(Boolean).join(',');
     if (!idsString) { setIsPriceLoading(false); return; }
     try {
-      // Call serverless aggregator to avoid hitting CoinGecko directly from browser
-      const url = `/api/prices?ids=${encodeURIComponent(idsString)}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        const text = await res.text().catch(() => '');
-        const err = new Error(`Price aggregator responded ${res.status}: ${text}`);
-        err.status = res.status;
-        throw err;
-      }
-      const body = await res.json();
-      const data = body.data || {};
-      setMarketPrices(prev => ({ ...prev, ...data }));
-      const missing = uniqueIds.filter(id => !(id in data));
-      if (missing.length) console.warn('Price aggregator missing ids in response:', missing);
-      setApiStatus('online');
-      setLastUpdate(Date.now());
+      const res = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${idsString}&vs_currencies=usd`);
+      if (res.ok) {
+        const data = await res.json();
+        setMarketPrices(prev => ({ ...prev, ...Object.fromEntries(Object.entries(data).map(([k, v]) => [k, v.usd])) }));
+        setApiStatus('online');
+        setLastUpdate(Date.now());
+      } else { setApiStatus('error'); }
     } catch (e) { setApiStatus('error'); }
     finally { setIsPriceLoading(false); }
   }, [livePositions, assetType, isCustomMode, customTokenId]);
 
-  // Dynamic polling with backoff to allow faster refresh while protecting rate limits
-  const [pollInterval, setPollInterval] = useState(10000); // target 10s
-  const [failCount, setFailCount] = useState(0);
-
   useEffect(() => {
-    let mounted = true;
-    let timeoutId = null;
-
-    const run = async () => {
-      try {
-        await fetchPrices();
-        if (!mounted) return;
-        setFailCount(0);
-        // normal interval
-        timeoutId = setTimeout(run, pollInterval);
-      } catch (err) {
-        if (!mounted) return;
-        const nextFail = failCount + 1;
-        setFailCount(nextFail);
-        // exponential backoff: 2s,4s,8s,... capped at 60s
-        const backoff = Math.min(60000, 2000 * (2 ** (nextFail - 1)));
-        console.warn('Price fetch failed; backing off', backoff, err);
-        timeoutId = setTimeout(run, backoff);
-      }
-    };
-
-    run();
-    return () => { mounted = false; if (timeoutId) clearTimeout(timeoutId); };
-  }, [fetchPrices, pollInterval, failCount]);
+    fetchPrices();
+    const interval = setInterval(fetchPrices, 60000);
+    return () => clearInterval(interval);
+  }, [fetchPrices]);
 
   // --- Logika Kalkulasi Equilibrium (V3 + Short) ---
   const calculatePosition = (P_entry, P_current, PL, PH, inv, apr, hours, lev = 3, skipFees = false) => {

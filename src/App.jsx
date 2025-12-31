@@ -24,11 +24,34 @@ import {
 } from 'lucide-react';
 
 // --- Konfigurasi Firebase ---
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'equilibrium-engine-v8';
+// Support Vite envs: set VITE_FIREBASE_CONFIG to a JSON string in Vercel env vars
+let firebaseConfig = {};
+try {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_FIREBASE_CONFIG) {
+    firebaseConfig = JSON.parse(import.meta.env.VITE_FIREBASE_CONFIG);
+  } else if (typeof __firebase_config !== 'undefined') {
+    firebaseConfig = JSON.parse(__firebase_config);
+  }
+} catch (e) {
+  console.warn('Failed to parse firebase config from env', e);
+}
+
+let app = null;
+let auth = null;
+let db = null;
+if (firebaseConfig && Object.keys(firebaseConfig).length) {
+  try {
+    app = initializeApp(firebaseConfig);
+    auth = getAuth(app);
+    db = getFirestore(app);
+  } catch (e) {
+    console.warn('Firebase initialization failed', e);
+  }
+} else {
+  console.warn('No Firebase config provided; auth/firestore disabled');
+}
+
+const appId = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_ID) || (typeof __app_id !== 'undefined' ? __app_id : 'equilibrium-engine-v8');
 
 // --- Utilitas Format Angka ---
 const formatNum = (num, fixed = 2) => {
@@ -73,20 +96,25 @@ const App = () => {
   const [user, setUser] = useState(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
 
+  const firebaseEnabled = !!db && !!auth;
+
   // --- Auth Flow ---
   useEffect(() => {
     const initAuth = async () => {
+      if (!auth) return;
       try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
+        const token = (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_INITIAL_AUTH_TOKEN) || (typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null);
+        if (token) {
+          await signInWithCustomToken(auth, token);
         } else {
           await signInAnonymously(auth);
         }
       } catch (e) {
-        console.error("Auth error:", e);
+        console.error('Auth error:', e);
       }
     };
     initAuth();
+    if (!auth) return;
     const unsubscribe = onAuthStateChanged(auth, setUser);
     return () => unsubscribe();
   }, []);
@@ -102,6 +130,20 @@ const App = () => {
     }, (err) => console.error("Firestore error:", err));
     return () => unsubscribe();
   }, [user]);
+
+  // --- Load local positions when Firebase/db not available or user not signed in ---
+  useEffect(() => {
+    if (firebaseEnabled && user) return; // cloud will handle livePositions
+    try {
+      const raw = localStorage.getItem('local_positions');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        setLivePositions(parsed || []);
+      }
+    } catch (e) {
+      console.warn('Failed to load local positions', e);
+    }
+  }, [firebaseEnabled, user]);
 
   const removePosition = async (id) => {
     if (!user) return;
@@ -209,20 +251,41 @@ const App = () => {
   [initialPrice, futurePrice, lowPrice, highPrice, investment, estAPR, simulatedHours, shortLeverage]);
 
   const savePos = async () => {
-    if (!user) return;
     const assetId = isCustomMode ? customTokenId.toLowerCase().trim() : assetType;
-    const id = `pos_${Date.now()}`;
-    await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'positions', id), {
-      assetType: assetId, 
-      initialPrice: initialPrice, 
-      lowPrice: lowPrice, 
-      highPrice: highPrice, 
-      investment: investment, 
-      estAPR: estAPR, 
-      shortLeverage: shortLeverage, 
+    const payload = {
+      id: `pos_${Date.now()}`,
+      assetType: assetId,
+      initialPrice: initialPrice,
+      lowPrice: lowPrice,
+      highPrice: highPrice,
+      investment: investment,
+      estAPR: estAPR,
+      shortLeverage: shortLeverage,
       startTime: Date.now()
-    });
-    setActiveTab('live');
+    };
+
+    if (firebaseEnabled && user && db) {
+      try {
+        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'positions', payload.id), payload);
+        setActiveTab('live');
+        return;
+      } catch (e) {
+        console.error('Failed to save to Firestore, falling back to localStorage', e);
+      }
+    }
+
+    // Fallback: save locally so the button still works without Firebase
+    try {
+      const raw = localStorage.getItem('local_positions');
+      const arr = raw ? JSON.parse(raw) : [];
+      arr.push(payload);
+      localStorage.setItem('local_positions', JSON.stringify(arr));
+      setLivePositions(arr);
+      setActiveTab('live');
+      console.warn('Saved position to localStorage (Firebase not configured)');
+    } catch (e) {
+      console.error('Failed to save fallback position locally', e);
+    }
   };
 
   return (
